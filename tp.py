@@ -16,13 +16,18 @@ import os
 
 drive.mount('/content/drive')
 
-os.chdir('/content/drive/MyDrive/Cuarto Año/Segundo Cuatrimestre/Deep Learning/Proyecto/skin_cancer')
+# os.chdir('/content/drive/MyDrive/Cuarto Año/Segundo Cuatrimestre/Deep Learning/Proyecto/skin_cancer')
+os.chdir('/content/drive/MyDrive/skin_cancer')
 print(os.getcwd())
 
-"""Desde aca empieza el tp posta
+"""Desde aca empieza el tp posta"""
 
-ResNet VS Inception -
+model_save_name = '/content/drive/MyDrive/skin_cancer/modelo.pt'
+model.load_state_dict(torch.load(model_save_name))
+
+"""ResNet VS Inception -
 PyTorch
+
 """
 
 pip install torch
@@ -30,6 +35,8 @@ pip install torch
 import torch
 import torch.optim as optim
 import torch.nn as nn
+import torchvision
+import matplotlib.pyplot as plt
 from torchvision import datasets, models, transforms
 
 from tqdm import tqdm
@@ -38,18 +45,18 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 transform = transforms.Compose(
     [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), 
+     transforms.Resize((50, 50))]
+     )
 
 batch_size = 32
 
-trainset = datasets.CIFAR10(root='./data', train=True,
-                                        download=True, transform=transform)
+# trainset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 trainset = datasets.ImageFolder('train', transform=transform)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                           shuffle=True, num_workers=2)
 
-testset = datasets.CIFAR10(root='./data', train=False,
-                                       download=True, transform=transform)
+# testset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 testset = datasets.ImageFolder('Test', transform=transform)
 testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                          shuffle=False, num_workers=2)
@@ -60,14 +67,14 @@ testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
 lr = 0.001
 model = models.resnet50(pretrained = True)
 num_ftrs = model.fc.in_features
-model.fc = nn.Linear(num_ftrs, 10)
+model.fc = nn.Linear(num_ftrs, 9)
 model.to(device)
 
 loss_fn = nn.CrossEntropyLoss()
 
 optimizer = optim.Adagrad(model.parameters(),lr = lr)
 
-epochs = 2
+epochs = 1
 losses = []
 
 def make_train_step(model, loss_fn, optimizer):
@@ -78,14 +85,14 @@ def make_train_step(model, loss_fn, optimizer):
         # Makes predictions
         yhat = model(x)
         # Computes loss
-        #print(y)
+        # print(y)
         #print("ACA TERMINO EL Y NORMAL")
-        #print(yhat)
+        # print(yhat)
         #print(y.shape)
         #print(torch.nn.functional.one_hot(y, num_classes=10))
         #print(yhat.shape)
         #print(yhat)
-        one_hot = torch.nn.functional.one_hot(y,num_classes=10)
+        one_hot = torch.nn.functional.one_hot(y,num_classes=9)
         loss = torch.nn.functional.cross_entropy(yhat,torch.max(one_hot, 1)[1])
         # Computes gradients
         loss.backward()
@@ -105,11 +112,102 @@ train_step = make_train_step(model, loss_fn, optimizer)
 
 for epoch in range(epochs):
    for x_batch, y_batch in tqdm(trainloader):
+        i = len(losses)
         x_batch = x_batch.to(device)
         y_batch = y_batch.to(device)
-        #print(x_batch.shape)
-        #print(y_batch.shape)
+        # print(x_batch.shape)
+        # print(y_batch.shape)
         loss = train_step(x_batch, y_batch)
         losses.append(loss)
 
+        if i % 1000 == 999:    # every 1000 mini-batches...
+
+            # ...log the running loss
+            writer.add_scalar('training loss',
+                            running_loss / 1000,
+                            epoch * len(trainloader) + i)
+
+            # ...log a Matplotlib Figure showing the model's predictions on a
+            # random mini-batch
+            writer.add_figure('predictions vs. actuals',
+                            plot_classes_preds(net, inputs, labels),
+                            global_step=epoch * len(trainloader) + i)
+            running_loss = 0.0
+
 #print(model.state_dict())
+
+print(model.eval())
+
+model_save_name = '/content/drive/MyDrive/skin_cancer/modelo.pt'
+torch.save(model.state_dict(), model_save_name)
+
+"""Tensor Board"""
+
+from torch.utils.tensorboard import SummaryWriter
+
+# default `log_dir` is "runs" - we'll be more specific here
+writer = SummaryWriter('runs/fashion_mnist_experiment_1')
+
+# helper function to show an image
+# (used in the `plot_classes_preds` function below)
+def matplotlib_imshow(img, one_channel=False):
+    if one_channel:
+        img = img.mean(dim=0)
+    img = img / 2 + 0.5     # unnormalize
+    npimg = img.numpy()
+    if one_channel:
+        plt.imshow(npimg, cmap="Greys")
+    else:
+        plt.imshow(np.transpose(npimg, (1, 2, 0)))
+
+# get some random training images
+dataiter = iter(trainloader)
+images, labels = dataiter.next()
+
+# create grid of images
+img_grid = torchvision.utils.make_grid(images)
+
+# show images
+matplotlib_imshow(img_grid, one_channel=True)
+
+# write to tensorboard
+writer.add_image('four_fashion_mnist_images', img_grid)
+
+# helper functions
+
+def images_to_probs(net, images):
+    '''
+    Generates predictions and corresponding probabilities from a trained
+    network and a list of images
+    '''
+    output = net(images)
+    # convert output probabilities to predicted class
+    _, preds_tensor = torch.max(output, 1)
+    preds = np.squeeze(preds_tensor.numpy())
+    return preds, [F.softmax(el, dim=0)[i].item() for i, el in zip(preds, output)]
+
+
+def plot_classes_preds(net, images, labels):
+    '''
+    Generates matplotlib Figure using a trained network, along with images
+    and labels from a batch, that shows the network's top prediction along
+    with its probability, alongside the actual label, coloring this
+    information based on whether the prediction was correct or not.
+    Uses the "images_to_probs" function.
+    '''
+    preds, probs = images_to_probs(net, images)
+    # plot the images in the batch, along with predicted and true labels
+    fig = plt.figure(figsize=(12, 48))
+    for idx in np.arange(4):
+        ax = fig.add_subplot(1, 4, idx+1, xticks=[], yticks=[])
+        matplotlib_imshow(images[idx], one_channel=True)
+        ax.set_title("{0}, {1:.1f}%\n(label: {2})".format(
+            classes[preds[idx]],
+            probs[idx] * 100.0,
+            classes[labels[idx]]),
+                    color=("green" if preds[idx]==labels[idx].item() else "red"))
+    return fig
+
+# Commented out IPython magic to ensure Python compatibility.
+# %load_ext tensorboard
+# %tensorboard --logdir=runs
