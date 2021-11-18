@@ -7,25 +7,15 @@ Original file is located at
     https://colab.research.google.com/drive/1LFbJ5Eii1tlbldLvOLDh3Z5HjzSoMcoT
 """
 
-uploader = widgets.FileUpload()
-uploader
-img = PILImage.create(uploader.data[0])
-
 from google.colab import drive
 import os
 
-drive.mount('/content/drive')
+drive.mount('/content/drive', force_remount=True)
 
-# os.chdir('/content/drive/MyDrive/Cuarto Año/Segundo Cuatrimestre/Deep Learning/Proyecto/skin_cancer')
 os.chdir('/content/drive/MyDrive/skin_cancer')
 print(os.getcwd())
 
-"""Desde aca empieza el tp posta"""
-
-model_save_name = '/content/drive/MyDrive/skin_cancer/modelo.pt'
-model.load_state_dict(torch.load(model_save_name))
-
-"""ResNet VS Inception -
+"""ResNet -
 PyTorch
 
 """
@@ -43,28 +33,27 @@ from tqdm import tqdm
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+"""Cargar los datasets"""
+
 transform = transforms.Compose(
     [transforms.ToTensor(),
      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), 
-     transforms.Resize((50, 50))]
+     transforms.Resize((200, 200))]
      )
 
-batch_size = 32
+batch_size = 24
 
-# trainset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 trainset = datasets.ImageFolder('train', transform=transform)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                           shuffle=True, num_workers=2)
 
-# testset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 testset = datasets.ImageFolder('Test', transform=transform)
 testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                          shuffle=False, num_workers=2)
 
-# classes = ('plane', 'car', 'bird', 'cat',
-#            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+"""Definir el modelo"""
 
-lr = 0.001
+lr = 0.0001
 model = models.resnet50(pretrained = True)
 num_ftrs = model.fc.in_features
 model.fc = nn.Linear(num_ftrs, 9)
@@ -74,7 +63,7 @@ loss_fn = nn.CrossEntropyLoss()
 
 optimizer = optim.Adagrad(model.parameters(),lr = lr)
 
-epochs = 1
+epochs = 9
 losses = []
 
 def make_train_step(model, loss_fn, optimizer):
@@ -85,13 +74,6 @@ def make_train_step(model, loss_fn, optimizer):
         # Makes predictions
         yhat = model(x)
         # Computes loss
-        # print(y)
-        #print("ACA TERMINO EL Y NORMAL")
-        # print(yhat)
-        #print(y.shape)
-        #print(torch.nn.functional.one_hot(y, num_classes=10))
-        #print(yhat.shape)
-        #print(yhat)
         one_hot = torch.nn.functional.one_hot(y,num_classes=9)
         loss = torch.nn.functional.cross_entropy(yhat,torch.max(one_hot, 1)[1])
         # Computes gradients
@@ -108,9 +90,18 @@ def make_train_step(model, loss_fn, optimizer):
 # Creates the train_step function for our model, loss function and optimizer
 train_step = make_train_step(model, loss_fn, optimizer)
 
+"""
+Cargar el modelo del drive
+"""
+
+model_save_name = '/content/drive/MyDrive/skin_cancer/modelo_OP.pt'
+model.load_state_dict(torch.load(model_save_name))
+
+"""Entrenar al modelo"""
+
 #print(model.state_dict())
 
-for epoch in range(epochs):
+for epoch in range(1):
    for x_batch, y_batch in tqdm(trainloader):
         i = len(losses)
         x_batch = x_batch.to(device)
@@ -119,27 +110,144 @@ for epoch in range(epochs):
         # print(y_batch.shape)
         loss = train_step(x_batch, y_batch)
         losses.append(loss)
+        print('training loss')
+        print(loss)
 
-        if i % 1000 == 999:    # every 1000 mini-batches...
+        # if i % 100 == 0:    # every 1000 mini-batches...
 
-            # ...log the running loss
-            writer.add_scalar('training loss',
-                            running_loss / 1000,
-                            epoch * len(trainloader) + i)
+        #     # ...log the running loss
+        #     writer.add_scalar('training loss',
+        #                     running_loss / 1000,
+        #                     epoch * len(trainloader) + i)
 
-            # ...log a Matplotlib Figure showing the model's predictions on a
-            # random mini-batch
-            writer.add_figure('predictions vs. actuals',
-                            plot_classes_preds(net, inputs, labels),
-                            global_step=epoch * len(trainloader) + i)
-            running_loss = 0.0
+        #     # ...log a Matplotlib Figure showing the model's predictions on a
+        #     # random mini-batch
+        #     writer.add_figure('predictions vs. actuals',
+        #                     plot_classes_preds(net, inputs, labels),
+        #                     global_step=epoch * len(trainloader) + i)
+        #     running_loss = 0.0
 
 #print(model.state_dict())
 
-print(model.eval())
 
-model_save_name = '/content/drive/MyDrive/skin_cancer/modelo.pt'
+
+"""Dejo comentariado el save para no ejecutarlo por error, igual le cambie el file name por lo mismo"""
+
+model_save_name = '/content/drive/MyDrive/skin_cancer/modelo_OP_12epochs.pt'
 torch.save(model.state_dict(), model_save_name)
+
+from matplotlib import pyplot as plt
+plt.plot(losses)
+plt.show()
+
+"""Subir y predecir sobre una imágen"""
+
+!pip install -Uqq fastbook
+import fastbook
+fastbook.setup_book()
+
+from fastbook import *
+
+uploader = widgets.FileUpload()
+uploader
+
+uploader.data[0]
+img = PILImage.create(uploader.data[0])
+img
+
+model.eval()
+
+# Preprocess and display image
+from torchvision import transforms
+norm = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+inv_norm = transforms.Normalize((-0.5, -0.5, -0.5), (-0.5, -0.5, -0.5))
+preprocess = transforms.Compose([
+    transforms.Resize((200, 200)),
+    transforms.ToTensor(),
+    norm,
+])
+image_tensor = preprocess(img)
+input_tensor = image_tensor.unsqueeze(0) # single-image batch as wanted by model
+input_tensor = input_tensor.to(device) # send tensor to TPU
+
+# Display resized and cropped image
+fig, ax = plt.subplots(1, 2, figsize=(8, 4));
+mnc_tensor = image_tensor.permute(1, 2, 0); # (C, M, N) -> (M, N, C)
+ax[0].imshow(mnc_tensor);
+ax[0].axis('off');
+ax[0].set_title('preprocessed image');
+inv_norm_tensor = inv_norm(image_tensor).permute(1, 2, 0);
+ax[1].imshow(inv_norm_tensor);
+ax[1].axis('off');
+ax[1].set_title('inv_norm(preprocessed image)');
+
+# Single prediction call
+outputs = model(input_tensor)
+print('outputs.device == {}'.format(outputs.device))
+print(outputs)
+prediction = outputs.max(dim=1).indices.item()
+print(prediction)
+
+"""Labels:"""
+
+labels = {'actinic keratosis',
+ 'basal cell carcinoma',
+ 'dermatofibroma',
+ 'melanoma',
+ 'nevus',
+ 'pigmented benign keratosis',
+ 'seborrheic keratosis',
+ 'squamous cell carcinoma',
+ 'vascular lesion'}
+
+def model_img_evaluate(model,img_path):
+  img = Image.open(img_path)
+  # Preprocess and display image
+  norm = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+  inv_norm = transforms.Normalize((-0.5, -0.5, -0.5), (-0.5, -0.5, -0.5))
+  preprocess = transforms.Compose([
+      transforms.Resize((200, 200)),
+      transforms.ToTensor(),
+      norm,
+  ])
+  image_tensor = preprocess(img)
+  input_tensor = image_tensor.unsqueeze(0) # single-image batch as wanted by model
+  input_tensor = input_tensor.to(device) # send tensor to TPU
+
+  # Single prediction call
+  outputs = model(input_tensor)
+  #prediction = outputs.max(dim=1).indices.item()
+  prediction = torch.topk(outputs,2).indices[0]
+  return prediction;
+
+from PIL import Image
+from sklearn.metrics import ConfusionMatrixDisplay
+
+model.eval()
+total = 0;
+correct = 0;
+y_true = []
+y_pred = []
+
+for img in testset.imgs:
+  image_filepath = os.getcwd()+"/"+img[0]
+  y = img[1]
+  y_hat = model_img_evaluate(model,image_filepath)
+  if(y == y_hat[0] or y == y_hat[1]):
+  #if(y == y_hat[0]):
+    correct = correct + 1
+    y_pred.append(y)
+  else:
+    y_pred.append(y_hat[0].item())
+  y_true.append(y)
+  total = total + 1
+
+print(y_true)
+print(y_pred)
+print(correct)
+print(total)
+ConfusionMatrixDisplay.from_predictions(y_true, y_pred,display_labels=testset.classes,xticks_rotation='vertical')
+plt.show()
 
 """Tensor Board"""
 
